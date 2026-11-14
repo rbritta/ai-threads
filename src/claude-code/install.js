@@ -23,6 +23,7 @@ const TAG = '#ai-threads';
 const OURS = /ai-threads\.js"? hook (start|wake|vigia|prompt|end)\b.*#ai-threads$/;
 const PACKAGE_ROOT = path.join(__dirname, '..', '..');
 const REWAKE = 'ai-threads: messages for this session.';
+const REWAKE_SUMMARY = 'ai-threads: messages';
 
 const settingsFile = ({ settings, claudeDir } = {}) => path.resolve(settings || path.join(defaultClaudeDir(claudeDir), 'settings.json'));
 const runtimeDir = (home) => path.join(home, 'runtime');
@@ -37,17 +38,32 @@ function readSettings(file) {
 
 const isOurs = (h) => !!h && typeof h.command === 'string' && OURS.test(h.command);
 
-/** Our five entries, for the runtime copy under `home`. */
-function entries(home) {
+/**
+ * Our five entries, for the runtime copy under `home`. `rewakeMessage` and `rewakeSummary` are the line
+ * the session reads above a batch that woke it, and the short label Claude Code shows for it.
+ */
+function entries(home, { rewakeMessage = REWAKE, rewakeSummary = REWAKE_SUMMARY } = {}) {
   const bin = fwd(path.join(runtimeDir(home), 'bin', 'ai-threads.js'));
   const cmd = (ev) => `node "${bin}" hook ${ev} --home "${fwd(home)}" ${TAG}`;
+  const rewake = { rewakeMessage, rewakeSummary };
   return {
     SessionStart: { hooks: [{ type: 'command', command: cmd('start'), timeout: 10 }] },
-    FileChanged: { hooks: [{ type: 'command', command: cmd('wake'), asyncRewake: true, timeout: 30, rewakeMessage: REWAKE, rewakeSummary: 'ai-threads: messages' }] },
-    Stop: { hooks: [{ type: 'command', command: cmd('vigia'), asyncRewake: true, timeout: 86400, rewakeMessage: REWAKE, rewakeSummary: 'ai-threads: messages' }] },
+    FileChanged: { hooks: [{ type: 'command', command: cmd('wake'), asyncRewake: true, timeout: 30, ...rewake }] },
+    Stop: { hooks: [{ type: 'command', command: cmd('vigia'), asyncRewake: true, timeout: 86400, ...rewake }] },
     UserPromptSubmit: { hooks: [{ type: 'command', command: cmd('prompt'), timeout: 10 }] },
     SessionEnd: { hooks: [{ type: 'command', command: cmd('end'), timeout: 10 }] },
   };
+}
+
+/** The rewake texts our installed entries carry now, so installing again without them keeps them. */
+function currentRewake(settings) {
+  for (const groups of Object.values((settings && settings.hooks) || {})) {
+    for (const g of Array.isArray(groups) ? groups : []) {
+      const h = g && Array.isArray(g.hooks) ? g.hooks.find((x) => isOurs(x) && typeof x.rewakeMessage === 'string') : null;
+      if (h) return { rewakeMessage: h.rewakeMessage, rewakeSummary: typeof h.rewakeSummary === 'string' ? h.rewakeSummary : REWAKE_SUMMARY };
+    }
+  }
+  return {};
 }
 
 /** The settings without our entries (groups left empty by that go too). */
@@ -65,11 +81,18 @@ function withoutHooks(settings) {
   return s;
 }
 
-/** The settings with our entries, exactly once, after the user's own. */
-function withHooks(settings, home) {
+/**
+ * The settings with our entries, exactly once, after the user's own. Rewake texts not given stay what
+ * the installed entries had (else the defaults).
+ */
+function withHooks(settings, home, opts = {}) {
+  const keep = currentRewake(settings);
+  const pick = (k) => (typeof opts[k] === 'string' ? opts[k] : keep[k]);
+  const rewake = {};
+  for (const k of ['rewakeMessage', 'rewakeSummary']) if (pick(k) !== undefined) rewake[k] = pick(k);
   const s = withoutHooks(settings);
   s.hooks = s.hooks || {};
-  for (const [ev, group] of Object.entries(entries(home))) s.hooks[ev] = [...(s.hooks[ev] || []), group];
+  for (const [ev, group] of Object.entries(entries(home, rewake))) s.hooks[ev] = [...(s.hooks[ev] || []), group];
   return s;
 }
 
@@ -104,13 +127,16 @@ function refreshRuntime(home, from = PACKAGE_ROOT) {
   return dest;
 }
 
-/** Installs the hooks. Returns what it did, for the caller to tell the user. */
-function install({ home, settings, claudeDir } = {}) {
+/**
+ * Installs the hooks. `rewakeMessage` / `rewakeSummary`: the line above a batch that wakes the session and
+ * its short label (kept from the installed entries when not given). Returns what it did.
+ */
+function install({ home, settings, claudeDir, rewakeMessage, rewakeSummary } = {}) {
   if (!home) throw new Error('install needs the ai-threads home');
   const file = settingsFile({ settings, claudeDir });
   const before = readSettings(file);
   const runtime = refreshRuntime(home);
-  const after = withHooks(before, home);
+  const after = withHooks(before, home, { rewakeMessage, rewakeSummary });
   const changed = JSON.stringify(before) !== JSON.stringify(after);
   let backup = null;
   if (changed) { backup = fs.existsSync(file) ? backupOnce(file) : null; write(file, after); }
@@ -135,4 +161,4 @@ function status({ settings, claudeDir } = {}) {
   return { installed, settings: file, error };
 }
 
-module.exports = { TAG, settingsFile, runtimeDir, readSettings, entries, withHooks, withoutHooks, isInstalled, refreshRuntime, install, remove, status };
+module.exports = { TAG, REWAKE, REWAKE_SUMMARY, settingsFile, runtimeDir, readSettings, entries, withHooks, withoutHooks, isInstalled, refreshRuntime, install, remove, status };

@@ -148,7 +148,7 @@ function build(api, sid, opts = {}) {
       state, tone: TONE[state] || 'idle', label: labels[state] || '',
       activity: state === 'working' ? (act ? `${act.name}${act.text ? ` · ${act.text}` : ''}` : labels.thinking) : '',
       origin: origins[t.opened_by] || '',
-      openedBy: t.opened_by, type: t.type || null, alert: !!t.alert, release: t.release || null,
+      openedBy: t.opened_by, type: t.type || null, alert: !!t.alert, release: t.release || null, ref: t.ref == null ? null : t.ref,
       parent: parent ? { id: parent.id, n: parent.n, title: parent.title || '' } : null,
       messages,
     });

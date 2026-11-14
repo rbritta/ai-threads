@@ -25,21 +25,24 @@ function fakeLiveness() {
   return fn;
 }
 
-/** An API over a temp home with no real registry and no detached processes. */
+/** An API over a temp home with no real registry and no detached processes (configured commands are recorded). */
 function api(t, opts = {}) {
   const root = tmp(t);
   const live = opts.liveness || fakeLiveness();
   const touched = [];
+  const commands = [];
   const at = threads.open({
     home: path.join(root, 'home'),
     claudeDir: path.join(root, 'claude'),
     env: {},
     liveness: live,
     spawnToucher: (sid) => touched.push(sid),
+    // runCommand: null runs configured commands for real; omitted, they are recorded
+    runCommand: opts.runCommand === null ? undefined : opts.runCommand || ((spec, payload) => commands.push({ spec, payload })),
     config: opts.config,
     now: opts.now,
   });
-  return { at, root, live, touched };
+  return { at, root, live, touched, commands };
 }
 
 /** Lines of a fake transcript. Their default times sit an hour ahead of the run, so they always come after

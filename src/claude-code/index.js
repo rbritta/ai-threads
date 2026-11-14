@@ -12,10 +12,10 @@ const install = require('./install');
  * Runs one hook the way Claude Code calls it and returns { stdout, stderr, code }. A hook never breaks
  * the session it runs in: an error is written to <home>/errors.log and the hook does nothing.
  */
-async function runHook(event, input, { home, env = process.env, claudeDir, config, liveness, spawnToucher } = {}) {
+async function runHook(event, input, { home, env = process.env, claudeDir, config, liveness, spawnToucher, runCommand } = {}) {
   let api;
   try {
-    api = core.open({ home, env, claudeDir, config, liveness, spawnToucher });
+    api = core.open({ home, env, claudeDir, config, liveness, spawnToucher, runCommand });
     const hooks = makeHooks(api, { env });
     if (!EVENTS.includes(event)) return { stdout: '', stderr: '', code: 0 };
     const res = await hooks[event](input || {});

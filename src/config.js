@@ -28,7 +28,16 @@ const DEFAULTS = Object.freeze({
   transform: null,
   /** When a session ends: 'keep' its undelivered messages for when it comes back, or 'return' them. */
   onEnd: 'keep',
+  /** The line above what rides along with a typed prompt; null: the default, '': none. */
+  piggybackHeader: null,
+  /** { command }: run detached after every claimed batch, the records as JSON on stdin (an app's delivered tick). */
+  onDelivered: null,
+  /** { command, everyMs }: run detached while a session sits idle (by its vigia) and on every touch (by wake). */
+  tick: null,
 });
+
+/** How often the idle tick runs when `tick.everyMs` is not given. */
+const TICK_EVERY_MS = 60000;
 
 const homeDir = (home, env = process.env) => path.resolve(home || env.AI_THREADS_HOME || path.join(os.homedir(), '.ai-threads'));
 const claudeDir = (dir, env = process.env) => path.resolve(dir || env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'));
@@ -41,4 +50,4 @@ function loadConfig(home, overrides = {}) {
   return merged;
 }
 
-module.exports = { DEFAULTS, homeDir, claudeDir, loadConfig };
+module.exports = { DEFAULTS, TICK_EVERY_MS, homeDir, claudeDir, loadConfig };

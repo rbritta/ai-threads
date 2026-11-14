@@ -28,7 +28,8 @@ with `[Qn → short title]`. Text with no mark goes to the thread of the last me
 - **No hook returns `watchPaths` except SessionStart.** A FileChanged hook that returns them can replace
   the watches other tools armed in the same session.
 - Hooks never throw: `runHook` turns any error into a line in `<home>/errors.log` and an exit 0.
-- A hook never waits on the network or a model. The transform runs in the sender's process.
+- A hook never waits on the network or a model. The transform runs in the sender's process. A configured
+  command (`onDelivered`, `tick`) runs detached and is never waited on.
 - Messages are claimed by rename under the session's claim lock; keep that, it is what makes delivery
   exactly once across the watch, the vigia and the prompt hook.
 - The file protocol is public: a change to a file's shape is a protocol version change (`v`), with
@@ -41,6 +42,7 @@ with `[Qn → short title]`. Text with no mark goes to the thread of the last me
 | `src/markup.js` | The Q markup: format, parse, the instruction texts. Pure. |
 | `src/core.js` | `open()`: inbox, claim, threads, listening, hand back, answers, events. |
 | `src/registry.js` | `threads.json` under its lock. |
+| `src/command.js` | The commands an app configures (`onDelivered`, `tick`): detached, payload on stdin. |
 | `src/view.js` | Threads for chat-thread, from the registry, the inbox, delivered records and the transcript. |
 | `src/claude-code/` | Hooks, transcript reader, live-session registry, settings installer. |
 | `src/cli.js` | The `ai-threads` command. |

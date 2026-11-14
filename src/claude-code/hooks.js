@@ -6,12 +6,14 @@
  *           when messages are already waiting, has a detached process re-touch the signal at 4, 12 and
  *           30 s, because the watcher only comes up after the start hooks return. After a resume, a
  *           clear or a compaction it also reminds the session of the Q markup, if it was told before.
- *   wake    FileChanged with asyncRewake: the signal was touched. Claims the batch and exits 2 with it on
- *           stderr, which wakes the session idle, busy, or before its first turn.
+ *   wake    FileChanged with asyncRewake: the signal was touched. Runs the idle tick (if configured),
+ *           claims the batch and exits 2 with it on stderr, which wakes the session idle, busy, or before
+ *           its first turn.
  *   vigia   Stop with asyncRewake: while the session sits idle, looks every 2 s and wakes it the same way.
  *           The fallback for a watcher that went down. The next Stop starts a new vigia and this one leaves;
- *           so it does when the session is gone.
- *   prompt  UserPromptSubmit: what was waiting rides along with what the person typed, as context.
+ *           so it does when the session is gone. It also runs the configured idle tick, every tick.everyMs.
+ *   prompt  UserPromptSubmit: what was waiting rides along with what the person typed, as context, under
+ *           a header (config.piggybackHeader; '' for none).
  *   end     SessionEnd: the session stops listening; its undelivered messages stay (or go back, onEnd).
  *
  * Never in a subagent (the input has agent_id). A hook never returns watchPaths outside SessionStart and
@@ -50,6 +52,7 @@ function makeHooks(api, { env = process.env, sleep = util.sleep } = {}) {
     if (skip(input)) return null;
     const sid = input.session_id;
     if (!util.samePath(input.file_path, api.layout(sid).signal)) return null; // another tool's file
+    api.tick(sid, { via: 'wake' });
     const msgs = api.claim(sid, { via: 'wake' });
     if (!msgs.length) return null;
     return { stderr: api.formatDelivery(sid, msgs), code: 2 };
@@ -71,11 +74,13 @@ function makeHooks(api, { env = process.env, sleep = util.sleep } = {}) {
     const until = Date.now() + maxMs;
     let checked = Date.now();
     try {
+      api.tick(sid, { via: 'vigia', throttle: true }); // the session just went idle
       while (Date.now() < until) {
         await sleep(stepMs);
         if (!mine()) return null; // a newer vigia took over, or the session ended
         const msgs = api.claim(sid, { via: 'vigia' });
         if (msgs.length) return { stderr: api.formatDelivery(sid, msgs), code: 2 };
+        api.tick(sid, { via: 'vigia', throttle: true });
         if (Date.now() - checked >= aliveCheckMs) {
           checked = Date.now();
           const info = api.liveness(sid) || {};
@@ -93,7 +98,9 @@ function makeHooks(api, { env = process.env, sleep = util.sleep } = {}) {
     const sid = input.session_id;
     const msgs = api.claim(sid, { via: 'prompt' });
     if (!msgs.length) return null;
-    const ctx = `${PIGGYBACK_HEADER}\n\n${api.formatDelivery(sid, msgs)}`;
+    const header = typeof cfg.piggybackHeader === 'string' ? cfg.piggybackHeader : PIGGYBACK_HEADER;
+    const batch = api.formatDelivery(sid, msgs);
+    const ctx = header ? `${header}\n\n${batch}` : batch;
     return { stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: ctx } }) };
   }
 

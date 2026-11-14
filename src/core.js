@@ -11,7 +11,8 @@ const { spawn } = require('child_process');
 const util = require('./util');
 const markup = require('./markup');
 const registry = require('./registry');
-const { homeDir, claudeDir, loadConfig } = require('./config');
+const command = require('./command');
+const { homeDir, claudeDir, loadConfig, TICK_EVERY_MS } = require('./config');
 
 const { validSession, readJson, writeAtomic, renameRetry, appendJsonl, readJsonl, withLock, newId, iso, jsonFiles } = util;
 const BIN = path.join(__dirname, '..', 'bin', 'ai-threads.js');
@@ -32,9 +33,22 @@ function layout(home, sid) {
     armed: path.join(dir, 'state', 'armed.json'),
     vigia: path.join(dir, 'state', 'vigia'),
     instructed: path.join(dir, 'state', 'instructed'),
+    tick: path.join(dir, 'state', 'tick'),
     claimLock: path.join(dir, 'state', 'claim.lock'),
   };
 }
+
+/** One release key, or several (one ask that allows more than one thing): a string, a list, or null. */
+function releaseKeys(v) {
+  if (Array.isArray(v)) {
+    const keys = [...new Set(v.map((k) => String(k == null ? '' : k).trim()).filter(Boolean))];
+    return keys.length > 1 ? keys : keys[0] || null;
+  }
+  return v == null || String(v).trim() === '' ? null : String(v).trim();
+}
+
+/** Whether an answer's release (a key or a list of keys) covers `key`. */
+const releases = (value, key) => (Array.isArray(value) ? value.includes(key) : value === key);
 
 function open(options = {}) {
   const env = options.env || process.env;
@@ -47,6 +61,8 @@ function open(options = {}) {
   const spawnToucher = options.spawnToucher || ((sid) => {
     spawn(process.execPath, [BIN, 'touch', sid, '--home', home], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
   });
+  /** Runs a configured command ({ command }) detached with `payload` on stdin; tests pass their own. */
+  const runCommand = options.runCommand || ((spec, payload) => command.runDetached(home, spec, payload, { now: now() }));
   const eventsFile = path.join(home, 'events.jsonl');
 
   const L = (sid) => {
@@ -106,9 +122,12 @@ function open(options = {}) {
    * configured transform first.
    *
    * opts.thread  3 or 'q3' (made if unknown, reopened if resolved); omitted: a new thread; false: no thread
+   * opts.ref     an app's own id for the thread (one of its conversations): with no `thread`, the message
+   *              goes to the thread that has this ref, or opens one that keeps it
    * opts.kind    'turn' (default) or 'notice' (no reply expected, never in a thread)
-   * opts.title, opts.type, opts.alert, opts.release, opts.parent: for a new thread
+   * opts.title, opts.type, opts.alert, opts.release (a key or a list), opts.parent: for a new thread
    * opts.from    who wrote it: 'person' (default), 'app', or a name
+   * opts.footer  a closing paragraph; a batch prints each distinct footer once, after its messages
    * opts.meta    anything the sender wants back in the delivered record
    * opts.retouch also re-touch a few times from a detached process (a session that is just starting)
    */
@@ -119,21 +138,22 @@ function open(options = {}) {
     if (body.length > config.maxText) throw Object.assign(new Error(`message longer than ${config.maxText} characters`), { code: 'ETOOLONG' });
     const kind = opts.kind === 'notice' ? 'notice' : 'turn';
     const from = opts.from || 'person';
+    const ref = opts.ref == null || String(opts.ref).trim() === '' ? null : String(opts.ref).trim();
     let thread = null;
     if (kind === 'turn' && opts.thread !== false) {
       const n = markup.threadNumber(opts.thread);
       if (opts.thread != null && opts.thread !== '' && !n) throw Object.assign(new Error(`not a thread: ${opts.thread}`), { code: 'EBADTHREAD' });
       const parent = markup.threadNumber(opts.parent);
       thread = registry.update(p.dir, (r) => {
-        let t = n ? registry.find(r, n) : null;
+        let t = n ? registry.find(r, n) : (ref ? registry.byRef(r, ref) : null);
         if (!t) {
           t = registry.make(r, {
             n: n || undefined,
             title: markup.oneLine(opts.title || (n ? '' : markup.titleOf(body)), 90),
             title_by: opts.title ? (from === 'person' ? 'person' : 'app') : null,
             opened_by: from === 'person' ? 'person' : 'app',
-            type: opts.type || null, alert: !!opts.alert, release: opts.release || null,
-            parent: parent && registry.find(r, parent) ? markup.threadId(parent) : null,
+            type: opts.type || null, alert: !!opts.alert, release: releaseKeys(opts.release),
+            ref, parent: parent && registry.find(r, parent) ? markup.threadId(parent) : null,
             at: iso(now()),
           });
         } else if (t.status === 'resolved') {
@@ -144,6 +164,7 @@ function open(options = {}) {
     }
     const msg = { v: 1, id: newId(now()), session_id: sid, thread: thread ? thread.id : null, kind, from, text: body, meta: opts.meta || {}, at: iso(now()) };
     if (opts.original != null && String(opts.original).trim() !== body) msg.original = String(opts.original);
+    if (opts.footer != null && String(opts.footer).trim()) msg.footer = String(opts.footer).trim();
     writeAtomic(path.join(p.inbox, `${msg.id}.json`), msg);
     if (thread && thread.release && from === 'person') {
       appendJsonl(p.answers, { at: msg.at, session_id: sid, thread: thread.id, release: thread.release, text: body, id: msg.id });
@@ -192,8 +213,9 @@ function open(options = {}) {
     if (!validSession(sid)) return [];
     const p = L(sid);
     if (!fs.existsSync(p.inbox) || !jsonFiles(p.inbox).length) return [];
+    let batch;
     try {
-      return withLock(p.claimLock, () => {
+      batch = withLock(p.claimLock, () => {
         const out = [];
         fs.mkdirSync(p.delivered, { recursive: true });
         for (const name of jsonFiles(p.inbox)) {
@@ -211,6 +233,30 @@ function open(options = {}) {
       if (e.code === 'ELOCKED') return []; // the holder is delivering them
       throw e;
     }
+    if (batch.length && command.runnable(config.onDelivered)) {
+      try { runCommand(config.onDelivered, { event: 'delivered', session_id: sid, via, messages: batch }); } catch (_) { /* delivery never fails over the app's command */ }
+    }
+    return batch;
+  }
+
+  /**
+   * The idle tick (config.tick): runs its command detached with the session id. `throttle` (the vigia)
+   * runs it only when `everyMs` passed since the last tick of the session; the wake runs it every time.
+   */
+  function tick(sid, { via = 'api', throttle = false } = {}) {
+    if (!command.runnable(config.tick) || !validSession(sid)) return false;
+    const p = L(sid);
+    const every = Number(config.tick.everyMs) > 0 ? Number(config.tick.everyMs) : TICK_EVERY_MS;
+    if (throttle) {
+      const last = Number((readJson(p.tick) || {}).at_ms) || 0;
+      if (last && now() - last < every) return false;
+    }
+    try {
+      fs.mkdirSync(p.state, { recursive: true });
+      writeAtomic(p.tick, { at: iso(now()), at_ms: now(), via });
+      runCommand(config.tick, { event: 'tick', session_id: sid, via });
+    } catch (_) { return false; }
+    return true;
   }
 
   function instructionText(sid) {
@@ -223,7 +269,8 @@ function open(options = {}) {
 
   /**
    * The text the session reads for a claimed batch: each message with its thread's mark, notices as
-   * they are. The first batch with a thread in a session also carries the instruction, once.
+   * they are, then each distinct footer once, in the order first seen. The first batch with a thread in
+   * a session also carries the instruction, once.
    */
   function formatDelivery(sid, msgs, { instruct = true } = {}) {
     const reg = registry.load(L(sid).dir);
@@ -232,6 +279,8 @@ function open(options = {}) {
       return n ? { n, title: (registry.find(reg, n) || {}).title || '', text: m.text } : { text: m.text };
     });
     let text = markup.formatBatch(items);
+    const footers = [...new Set(msgs.map((m) => (typeof m.footer === 'string' ? m.footer.trim() : '')).filter(Boolean))];
+    if (footers.length) text = `${text}\n\n${footers.join('\n\n')}`;
     if (instruct && items.some((i) => i.n) && !instructed(sid)) {
       const ins = instructionText(sid);
       if (ins) {
@@ -252,16 +301,30 @@ function open(options = {}) {
     return since ? all.filter((m) => String(m.delivered_at || '') >= String(since)) : all;
   }
 
-  /** Takes back a message still pending (the person removed it). True when it was still there. */
-  function retract(sid, id) {
+  /**
+   * Takes back a message still pending (the person removed it, or an app routes it elsewhere): one rename
+   * into retracted/ under the claim lock, the record then gains retracted_at (and reason). True when it
+   * was still there.
+   */
+  function retract(sid, id, { reason = null } = {}) {
     const p = L(sid);
     if (!/^[\w-]+$/.test(String(id || ''))) return false;
     return withLock(p.claimLock, () => {
       fs.mkdirSync(p.retracted, { recursive: true });
-      try { renameRetry(path.join(p.inbox, `${id}.json`), path.join(p.retracted, `${id}.json`)); } catch (_) { return false; }
-      event('retracted', sid, { id });
+      const to = path.join(p.retracted, `${id}.json`);
+      try { renameRetry(path.join(p.inbox, `${id}.json`), to); } catch (_) { return false; }
+      const m = readJson(to);
+      if (m) writeAtomic(to, { ...m, retracted_at: iso(now()), ...(reason ? { retracted_reason: reason } : {}) });
+      event('retracted', sid, reason ? { id, reason } : { id });
       return true;
     });
+  }
+
+  /** What was taken back from the session, oldest first. */
+  function retracted(sid) {
+    if (!validSession(sid)) return [];
+    const dir = L(sid).retracted;
+    return jsonFiles(dir).map((f) => readJson(path.join(dir, f))).filter(Boolean);
   }
 
   /**
@@ -335,11 +398,20 @@ function open(options = {}) {
   // ── threads ────────────────────────────────────────────────────────────────
 
   const threads = (sid) => registry.load(L(sid).dir).threads;
-  const thread = (sid, ref) => registry.find(registry.load(L(sid).dir), markup.threadNumber(ref));
+  /** Thread 3 by 3, '3' or 'q3'; or the thread an app knows by its own id, with { ref }. */
+  const thread = (sid, which) => {
+    const r = registry.load(L(sid).dir);
+    return which && typeof which === 'object' ? registry.byRef(r, which.ref) : registry.find(r, markup.threadNumber(which));
+  };
 
-  function needThread(r, ref) {
-    const n = markup.threadNumber(ref);
-    if (!n) throw Object.assign(new Error(`not a thread: ${ref}`), { code: 'EBADTHREAD' });
+  function needThread(r, which) {
+    if (which && typeof which === 'object') {
+      const t = registry.byRef(r, which.ref);
+      if (!t) throw Object.assign(new Error(`no thread with ref ${which.ref}`), { code: 'EBADTHREAD' });
+      return t;
+    }
+    const n = markup.threadNumber(which);
+    if (!n) throw Object.assign(new Error(`not a thread: ${which}`), { code: 'EBADTHREAD' });
     return registry.ensure(r, n);
   }
 
@@ -347,12 +419,13 @@ function open(options = {}) {
    * Opens a thread from either side. By the person, `text` is delivered into it; by the session (an ask
    * made through the CLI, say), `text` is recorded as the session's first message in messages.jsonl.
    */
-  function openThread(sid, { title = '', text = '', by = 'session', type = null, alert = false, release = null, parent = null } = {}) {
+  function openThread(sid, { title = '', text = '', by = 'session', type = null, alert = false, release = null, parent = null, ref = null } = {}) {
     const p = ensureSession(sid);
     const pn = markup.threadNumber(parent);
     const t = registry.update(p.dir, (r) => ({ ...registry.make(r, {
       title: markup.oneLine(title || markup.titleOf(text), 90), title_by: title ? by : null, opened_by: by,
-      type, alert: !!alert, release, parent: pn && registry.find(r, pn) ? markup.threadId(pn) : null, at: iso(now()),
+      type, alert: !!alert, release: releaseKeys(release), ref: ref == null || String(ref).trim() === '' ? null : String(ref).trim(),
+      parent: pn && registry.find(r, pn) ? markup.threadId(pn) : null, at: iso(now()),
     }) }));
     event('opened', sid, { thread: t.id, by, type, alert: !!alert, release });
     if (String(text).trim()) {
@@ -392,11 +465,14 @@ function open(options = {}) {
     return out;
   }
 
-  /** Changes a thread's type, red flag or release key. */
-  function setThread(sid, ref, patch = {}) {
+  /** Changes a thread's type, red flag, release keys or the app's own id for it (ref). */
+  function setThread(sid, which, patch = {}) {
     const allowed = {};
-    for (const k of ['type', 'alert', 'release']) if (k in patch) allowed[k] = k === 'alert' ? !!patch[k] : patch[k] || null;
-    return registry.update(ensureSession(sid).dir, (r) => ({ ...Object.assign(needThread(r, ref), allowed) }));
+    for (const k of ['type', 'alert', 'release', 'ref']) {
+      if (!(k in patch)) continue;
+      allowed[k] = k === 'alert' ? !!patch[k] : k === 'release' ? releaseKeys(patch[k]) : (patch[k] == null || patch[k] === '' ? null : patch[k]);
+    }
+    return registry.update(ensureSession(sid).dir, (r) => ({ ...Object.assign(needThread(r, which), allowed) }));
   }
 
   /** Threads an app already numbered elsewhere, taken as they are (a one-time import when moving over). */
@@ -405,7 +481,7 @@ function open(options = {}) {
       const n = markup.threadNumber(x.n ?? x.id);
       if (!n) return null;
       const t = registry.ensure(r, n);
-      for (const k of ['title', 'title_by', 'title_at', 'type', 'alert', 'release', 'opened_by', 'key', 'parent', 'at', 'status', 'resolved_at', 'resolved_by']) {
+      for (const k of ['title', 'title_by', 'title_at', 'type', 'alert', 'release', 'opened_by', 'key', 'ref', 'parent', 'at', 'status', 'resolved_at', 'resolved_by']) {
         if (x[k] !== undefined) t[k] = x[k];
       }
       return { ...t };
@@ -414,7 +490,7 @@ function open(options = {}) {
 
   /** The person's answers to threads that carry a release key, for a policy hook (docs/PROTOCOL.md). */
   function answers(sid, { release = null, since = null } = {}) {
-    return readJsonl(L(sid).answers).filter((a) => (!release || a.release === release) && (!since || String(a.at) >= String(since)));
+    return readJsonl(L(sid).answers).filter((a) => (!release || releases(a.release, release)) && (!since || String(a.at) >= String(since)));
   }
   function latestAnswer(sid, release, { withinMs = 60 * 60 * 1000 } = {}) {
     const list = answers(sid, { release, since: iso(now() - withinMs) });
@@ -471,17 +547,32 @@ function open(options = {}) {
     return require('./view').build(api, sid, opts);
   }
 
+  /**
+   * What the session answered in one thread (3, 'q3' or { ref }), oldest first: [{ id, text, at }], from
+   * its transcript split by the marks it wrote, plus the asks it opened through the API. `since` (ISO)
+   * keeps the later ones. Empty when the thread is unknown.
+   */
+  function replies(sid, which, { since = null, transcript: file } = {}) {
+    const t = thread(sid, which);
+    if (!t) return [];
+    const v = view(sid, file === undefined ? {} : { transcript: file });
+    const th = v.threads.find((x) => x.n === t.n);
+    return (th ? th.messages : [])
+      .filter((m) => m.from === 'other' && !m.kind && (!since || String(m.at || '') > String(since)))
+      .map((m) => ({ id: m.id, text: m.text, at: m.at || null }));
+  }
+
   const api = {
     home, config, claudeDir: claude, layout: L, now,
     register, session, known, ensureSession, touch,
     deliver, deliverSync, notice,
-    pending, claim, formatDelivery, reminder, instructionText, delivered, retract, handBack, returned,
-    arm, disarm, listening, liveness, retouch: (sid) => spawnToucher(sid),
+    pending, claim, formatDelivery, reminder, instructionText, delivered, retract, retracted, handBack, returned,
+    arm, disarm, listening, liveness, retouch: (sid) => spawnToucher(sid), tick,
     threads, thread, openThread, log, logged, rename, resolve, reopen, setThread, importThreads,
     answers, latestAnswer,
-    sessions, events, followEvents, transcriptOf, view, event,
+    sessions, events, followEvents, transcriptOf, view, replies, event,
   };
   return api;
 }
 
-module.exports = { open, layout };
+module.exports = { open, layout, releaseKeys };

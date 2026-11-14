@@ -1,7 +1,7 @@
 'use strict';
 /*
  * The thread registry of one session: <session dir>/threads.json. It holds what a thread is (number,
- * title, who opened it, type, red flag, release key, parent, status); the messages live in the inbox,
+ * title, who opened it, type, red flag, release keys, an app's own id, parent, status); the messages live in the inbox,
  * the delivered records, the session's transcript and messages.jsonl.
  *
  * Every change goes through `update`, which holds <session dir>/state/threads.lock while it reads,
@@ -30,6 +30,8 @@ function update(dir, fn) {
 
 const find = (r, n) => r.threads.find((t) => t.n === n) || null;
 const byKey = (r, key) => r.threads.find((t) => t.key === key) || null;
+/** The thread an app knows by its own id (`ref`): one of its conversations, say. */
+const byRef = (r, ref) => (ref == null || ref === '' ? null : r.threads.find((t) => t.ref != null && String(t.ref) === String(ref)) || null);
 const nextN = (r) => Math.max(0, ...r.threads.map((t) => t.n)) + 1;
 
 /** A new thread with every field the protocol lists. `n` defaults to the next free number. */
@@ -38,7 +40,7 @@ function make(r, fields = {}) {
   const t = {
     id: threadId(n), n, title: '', title_by: null, title_at: null,
     type: null, alert: false, release: null,
-    opened_by: 'person', key: null, parent: null,
+    opened_by: 'person', key: null, ref: null, parent: null,
     at: iso(), status: 'open', resolved_at: null, resolved_by: null,
     ...fields,
   };
@@ -52,4 +54,4 @@ function make(r, fields = {}) {
 /** Thread `n`, made when the registry does not know it yet (a number seen in a transcript, say). */
 const ensure = (r, n, fields = {}) => find(r, n) || make(r, { ...fields, n });
 
-module.exports = { FILE, empty, load, update, find, byKey, nextN, make, ensure };
+module.exports = { FILE, empty, load, update, find, byKey, byRef, nextN, make, ensure };

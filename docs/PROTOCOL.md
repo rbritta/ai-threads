@@ -6,6 +6,8 @@ threads by reading and writing these files the way this page says. The JavaScrip
 `ai-threads` command line are one implementation of it.
 
 Files are UTF-8 JSON (or JSON Lines). Times are ISO 8601 in UTC (`2026-11-14T10:02:00.000Z`). Version 1.
+Fields added in 0.2 (`footer`, `ref`, a list in `release`, `retracted_at`) are optional: a reader that does
+not know them ignores them.
 
 ## Layout
 
@@ -15,6 +17,7 @@ Files are UTF-8 JSON (or JSON Lines). Times are ISO 8601 in UTC (`2026-11-14T10:
   events.jsonl                    every queued, delivered, handed-back... event, all sessions
   returned/<id>.json              messages handed back to nobody in particular
   runtime/                        the copy of the package the installed hooks run from
+  tmp/                            payloads on their way to a configured command
   errors.log                      what a hook swallowed instead of breaking the session
   sessions/<session id>/
     signal                        the file the session watches; rewritten in place, never removed
@@ -28,6 +31,7 @@ Files are UTF-8 JSON (or JSON Lines). Times are ISO 8601 in UTC (`2026-11-14T10:
     state/armed.json              written by the start hook: the session watches its signal
     state/vigia                   present while the session's Stop vigia runs
     state/instructed              the session was told about the Q markup
+    state/tick                    when the idle tick last ran: { "at", "at_ms", "via" }
     state/claim.lock              held while a batch is claimed
     state/threads.lock            held while threads.json changes
 ```
@@ -61,6 +65,7 @@ Names that start with a dot are temp files: every listing skips them.
 | `from` | `person`, `app`, or a name. |
 | `text` | What the session reads, after any transform. |
 | `original` | Only when a transform changed the text: what was written. |
+| `footer` | Optional: a closing paragraph (how to answer, say). A batch prints each distinct footer once, after its messages. |
 | `meta` | Anything the sender wants back; ai-threads never reads it. |
 | `at` | When it was written. |
 
@@ -73,7 +78,7 @@ Once delivered, the record in `delivered/` gains:
 | `via` | How: `wake` (the watch), `vigia` (the Stop fallback), `prompt` (rode along with a typed prompt), or what the claimer said. |
 
 A message moved to another session gains `moved_from`; one handed back to nobody gains `returned_from`
-and `returned_at`.
+and `returned_at`; one retracted gains `retracted_at` and, when given, `retracted_reason`.
 
 ## Sending
 
@@ -88,6 +93,11 @@ session, shared by every tool that asked it to watch something. Removing or rena
 take that watcher down for all of them, and the session then stops getting anything until it restarts.
 
 If the message opens a thread or goes to one, update `threads.json` first (below).
+
+**Re-touching.** Any sender may touch the signal again, the same way, as often as it likes: a session that is
+just starting brings its watcher up a few seconds after its start hooks return, so ai-threads touches again
+at 4, 12 and 30 s while the inbox is not empty. A touch with nothing waiting does nothing; the rename keeps
+delivery at most once.
 
 ## Claiming
 
@@ -105,9 +115,20 @@ What the hooks do; a router can do it too.
 The rename is the claim: a message is delivered at most once even without the lock. The lock keeps a
 batch whole when two hooks fire at the same moment.
 
+## Retracting
+
+Taking back a message still in the inbox (the person removed it, or a router sends it elsewhere):
+
+1. Take `state/claim.lock` (as in "Claiming").
+2. Rename `inbox/<id>.json` to `retracted/<id>.json`. A rename that fails means it was delivered or taken
+   already: nothing to retract.
+3. Rewrite the record whole with `retracted_at` (and `retracted_reason`, if there is one).
+4. Append a `retracted` event. Remove the lock.
+
 ## What the session reads
 
-The batch, oldest first, a blank line between messages:
+The batch, oldest first, a blank line between messages, then each distinct footer once, in the order first
+seen:
 
 ```
 [Q3 · Deploy fails] Is it fixed now?
@@ -115,11 +136,18 @@ The batch, oldest first, a blank line between messages:
 CI is slow today.
 
 [Q5 · Docs] Update the README too.
+
+Answer each Q in its own part.
 ```
 
 A thread message is headed by its mark, `[Q<n> · <title>]`, with the thread's current title on one line
-(at most 60 characters, brackets taken out); a notice is its text alone. The first batch with a thread
-in a session also starts with the instruction (README, "What the session is told"), once.
+(at most 60 characters, brackets taken out); a notice, or a message with no thread, is its text alone. The
+first batch with a thread in a session also starts with the instruction (README, "What the session is
+told"), once.
+
+Claude Code shows a batch that woke the session after the hook's `rewakeMessage` line (set at install,
+default `ai-threads: messages for this session.`), and a batch that rides along with a typed prompt under
+the `piggybackHeader` line (config; `""` for none).
 
 ## Events
 
@@ -133,7 +161,7 @@ in a session also starts with the instruction (README, "What the session is told
 |---|---|
 | `queued` | `id`, `thread`, `kind`, `from` |
 | `delivered` | `id`, `thread`, `kind`, `via` |
-| `retracted` | `id` |
+| `retracted` | `id`, `reason` (when given) |
 | `handed_back` | `id`, `to` (a session, or `null` for `returned/`), `reason` |
 | `armed` | `source` (startup, resume, clear, compact) |
 | `ended` | `reason`, `pending` (ids still in the inbox) |
@@ -153,7 +181,7 @@ A person's app that wants ticks follows this file: `queued` is one tick, `delive
     {
       "id": "q3", "n": 3, "title": "Deploy fails", "title_by": "person", "title_at": null,
       "type": null, "alert": false, "release": null,
-      "opened_by": "person", "key": null, "parent": "q1",
+      "opened_by": "person", "key": null, "ref": null, "parent": "q1",
       "at": "2026-11-14T10:02:00.000Z", "status": "open", "resolved_at": null, "resolved_by": null
     }
   ]
@@ -166,9 +194,10 @@ A person's app that wants ticks follows this file: `queued` is one tick, `delive
 | `title`, `title_by`, `title_at` | The title and who gave it (`person`, `session`, `app`, or `null` when it came from the first message). |
 | `type` | Free text: `question`, `review`, `authorization`... |
 | `alert` | A red flag: the person should look at it first. |
-| `release` | A short key a policy hook looks for (`git`, `deploy`), see "Answers". |
+| `release` | A short key a policy hook looks for (`git`, `deploy`), or a list of keys when one ask allows more than one thing; see "Answers". |
 | `opened_by` | `person`, `session`, `app`, or `ide` (the thread of what was typed straight into the session). |
 | `key` | For threads found in a transcript: `ide`, or `new:<entry uuid>:<i>` for the i-th thread (from 0) one transcript entry of the session opened. |
+| `ref` | An app's own id for the thread (one of its conversations), unique in the session. A message sent with a `ref` and no thread goes to the thread that has it, or opens one that keeps it. |
 | `parent` | The thread it was derived from, `q<n>`. |
 | `status` | `open` or `resolved`. Either side resolves; a person writing again reopens it. |
 
@@ -238,8 +267,24 @@ When the person writes in a thread that has a `release` key, `answers.jsonl` get
 {"at":"2026-11-14T10:05:00.000Z","session_id":"...","thread":"q4","release":"git","text":"yes, push it","id":"0mwg0h1k2-1a2b3c4d"}
 ```
 
-A policy hook (one that allows or blocks what the session is about to do) reads it to know which ask
-was answered, by what, and when. Deciding whether the text says yes is the policy's job.
+`release` is the thread's, as it is: a key, or a list of keys. A policy hook (one that allows or blocks what
+the session is about to do) reads it to know which ask was answered, by what, and when; an answer whose
+`release` is a list counts for each key in it. Deciding whether the text says yes is the policy's job.
+
+## Commands an app configures
+
+`config.json` can name commands that ai-threads runs for an app (README, "Configuration"): `onDelivered`
+after every claimed batch, and `tick` while a session sits idle (by its vigia, at most once per `everyMs`,
+recorded in `state/tick`) and on every touch of its signal (by the wake). Each runs detached, with
+`AI_THREADS_HOME` set, its output ignored, and a JSON payload on stdin:
+
+```json
+{"event":"delivered","session_id":"...","via":"wake","messages":[{"v":1,"id":"...","delivered_at":"...", "...":"..."}]}
+{"event":"tick","session_id":"...","via":"vigia"}
+```
+
+`messages` are the delivered records, as they are in `delivered/`. The payload goes through a file in
+`tmp/` that the command gets as its stdin, so a hook that exits right away never cuts it short.
 
 ## Logged messages
 
@@ -285,4 +330,6 @@ def _b36(n):
 ```
 
 A message to an existing thread must name a thread that `threads.json` has; a new thread is added
-there first, under its lock.
+there first, under its lock. [test/fixtures/protocol.py](../test/fixtures/protocol.py) is a fuller
+implementation in the standard library (send with a footer, claim, retract) that the tests run against the
+JavaScript library.

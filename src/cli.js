@@ -7,25 +7,30 @@ const fs = require('fs');
 const core = require('./core');
 const markup = require('./markup');
 
+/** `--release git,deploy`: one key or a list. */
+const releaseOf = (v) => (typeof v === 'string' && v.includes(',') ? v.split(',') : v);
+
 const BOOL = new Set(['json', 'notice', 'alert', 'retouch', 'help', 'persist', 'instructed', 'no-alert']);
 
 const HELP = `ai-threads: threads between a person and one AI coding session.
 
-  ai-threads send <session> [text | --file F | -] [--thread N] [--title T] [--notice] [--from W]
-                  [--type T] [--alert] [--release K] [--parent N] [--retouch] [--json]
+  ai-threads send <session> [text | --file F | -] [--thread N | --ref R] [--title T] [--notice] [--from W]
+                  [--type T] [--alert] [--release K[,K2]] [--parent N] [--footer T] [--retouch] [--json]
   ai-threads list [<session>] [--json]          messages not delivered yet
   ai-threads threads <session> [--json]         the thread registry
   ai-threads view <session> [--persist]         threads as chat-thread's createThreads takes them (JSON)
   ai-threads open <session> [text | --file F] --title T [--by session|person] [--type T] [--alert]
-                  [--release K] [--parent N]    open a thread (an ask, when by the session)
+                  [--release K[,K2]] [--parent N] [--ref R]   open a thread (an ask, when by the session)
   ai-threads rename <session> <n> <title> | resolve <session> <n> | reopen <session> <n>
-  ai-threads retract <session> <id>             take back a message still pending
+  ai-threads retract <session> <id> [--reason T]   take back a message still pending
   ai-threads handback <session> [--to S]        move what the session never read
   ai-threads answers <session> [--release K] [--since ISO] [--json]
+  ai-threads replies <session> <n | --ref R> [--since ISO] [--json]   what the session answered in a thread
   ai-threads register <session> [--title T] [--app A] [--lang en|pt] [--cwd D] [--instructed]
   ai-threads status [<session>] [--json]        hooks installed, sessions, who listens now
   ai-threads events [--session S] [--since ISO] [--json]
-  ai-threads install [--settings F] [--claude-dir D]   add the Claude Code hooks
+  ai-threads install [--settings F] [--claude-dir D] [--rewake-message T] [--rewake-summary T]
+                                                       add the Claude Code hooks
   ai-threads remove  [--settings F] [--claude-dir D]   take them out
   ai-threads hook <start|wake|vigia|prompt|end>        what the hooks run (input on stdin)
 
@@ -91,8 +96,9 @@ async function main(argv = process.argv.slice(2), io = {}) {
         const sid = args.shift();
         const text = textOf(args, f, io);
         const opts = {
-          thread: f.thread, title: f.title, from: f.from, type: f.type, alert: !!f.alert, release: f.release,
-          parent: f.parent, retouch: !!f.retouch, kind: f.notice ? 'notice' : 'turn',
+          thread: f.thread, ref: f.ref, title: f.title, from: f.from, type: f.type, alert: !!f.alert,
+          release: releaseOf(f.release), parent: f.parent, footer: f.footer, retouch: !!f.retouch,
+          kind: f.notice ? 'notice' : 'turn',
         };
         const r = await at.deliver(sid, text, opts);
         if (f.json) json(r);
@@ -119,7 +125,7 @@ async function main(argv = process.argv.slice(2), io = {}) {
         const sid = args.shift();
         const t = at.openThread(sid, {
           title: f.title, text: textOf(args, f, io), by: f.by || 'session', type: f.type, alert: !!f.alert,
-          release: f.release, parent: f.parent,
+          release: releaseOf(f.release), parent: f.parent, ref: f.ref,
         });
         if (f.json) json(t);
         else out(`opened Q${t.n}\n`);
@@ -129,7 +135,7 @@ async function main(argv = process.argv.slice(2), io = {}) {
       case 'resolve': at.resolve(args[0], args[1], { by: f.by || 'person' }); return 0;
       case 'reopen': at.reopen(args[0], args[1]); return 0;
       case 'retract': {
-        const ok = at.retract(args[0], args[1]);
+        const ok = at.retract(args[0], args[1], { reason: f.reason || null });
         out(ok ? 'retracted\n' : 'not pending\n');
         return ok ? 0 : 1;
       }
@@ -143,6 +149,14 @@ async function main(argv = process.argv.slice(2), io = {}) {
         const list = at.answers(args[0], { release: f.release, since: f.since });
         if (f.json) json(list);
         else for (const a of list) out(`${a.at}  ${a.thread}  [${a.release}]  ${markup.oneLine(a.text, 80)}\n`);
+        return 0;
+      }
+      case 'replies': {
+        const which = f.ref ? { ref: f.ref } : args[1];
+        const list = at.replies(args[0], which, { since: f.since });
+        if (f.json) json(list);
+        else for (const r of list) out(`${r.at || ''}  ${markup.oneLine(r.text, 100)}
+`);
         return 0;
       }
       case 'register': {
@@ -169,7 +183,10 @@ async function main(argv = process.argv.slice(2), io = {}) {
       }
       case 'install': {
         const { install } = require('./claude-code');
-        const r = install.install({ home: at.home, settings: f.settings, claudeDir: f['claude-dir'] });
+        const r = install.install({
+          home: at.home, settings: f.settings, claudeDir: f['claude-dir'],
+          rewakeMessage: f['rewake-message'], rewakeSummary: f['rewake-summary'],
+        });
         out(`${r.changed ? 'installed' : 'already installed'} in ${r.settings}${r.backup ? ` (backup: ${r.backup})` : ''}\nhooks run from ${r.runtime}\n`);
         return 0;
       }

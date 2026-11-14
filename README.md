@@ -63,6 +63,8 @@ npx ai-threads install          # adds the hooks to ~/.claude/settings.json (bac
 
 `install --settings <file>` targets a project's `.claude/settings.local.json` instead. The hooks run from
 a copy at `<home>/runtime`, so they keep working if the package moves; `ai-threads remove` takes them out.
+`--rewake-message <text>` and `--rewake-summary <text>` set the line the session reads above a batch that
+woke it and the short label Claude Code shows; installing again without them keeps what is installed.
 
 Then, from your app:
 
@@ -142,26 +144,34 @@ message can be taken back with `retract()` (chat-thread's × on a queued bubble)
 
 | Sending | |
 |---|---|
-| `deliverSync(session, text, opts)` | Queue a message and touch the signal. `opts.thread` (3 or `'q3'`; omitted opens a new thread; `false` for none), `title`, `parent`, `type`, `alert`, `release`, `from`, `meta`, `kind: 'notice'`, `retouch` (for a session that is just starting). Returns `{ id, thread, n }`. |
+| `deliverSync(session, text, opts)` | Queue a message and touch the signal. `opts.thread` (3 or `'q3'`; omitted opens a new thread; `false` for none), `ref` (your own id for the thread, below), `title`, `parent`, `type`, `alert`, `release` (a key or a list), `from`, `footer`, `meta`, `kind: 'notice'`, `retouch` (for a session that is just starting). Returns `{ id, thread, n }`. |
 | `deliver(session, text, opts)` | The same after the transform (below), as a promise. |
 | `notice(session, text)` | A message with no thread and no reply expected. |
-| `retract(session, id)` | Take back a message still waiting. |
+| `retract(session, id, { reason })`, `retracted(session)` | Take back a message still waiting; what was taken back. |
 | `handBack(session, { to })` | Move what the session never read to another session, or out to `returned/`. |
 
 | Threads | |
 |---|---|
-| `threads(session)`, `thread(session, n)` | The registry. |
-| `openThread(session, { title, text, by, type, alert, release, parent })` | Open a thread from either side. Opened by the session, `text` is its ask. |
+| `threads(session)`, `thread(session, n)`, `thread(session, { ref })` | The registry; one thread by number or by your own id. |
+| `openThread(session, { title, text, by, type, alert, release, parent, ref })` | Open a thread from either side. Opened by the session, `text` is its ask. |
 | `rename`, `resolve`, `reopen`, `setThread` | Change one. Writing in a resolved thread reopens it. |
 | `answers(session, { release })`, `latestAnswer(session, release)` | The person's answers to threads with a release key, for a policy hook. |
 | `view(session, { persist, labels })` | Everything above plus the transcript, for chat-thread. |
+| `replies(session, n or { ref }, { since })` | What the session answered in one thread, from its transcript: `[{ id, text, at }]`. |
 
 | The session | |
 |---|---|
 | `listening(session)` | Whether it gets a message by itself now, and why. |
 | `pending`, `delivered`, `events`, `followEvents(cb)` | What waits, what was delivered, and the event log. |
 | `register(session, { title, app, lang, instruction, instructed })` | What the instruction says, and whether the session was already told. |
-| `claim`, `formatDelivery`, `arm`, `disarm` | What the hooks use, for a host other than Claude Code. |
+| `claim`, `formatDelivery`, `arm`, `disarm`, `tick` | What the hooks use, for a host other than Claude Code. |
+
+**Your own thread ids.** An app that keeps conversations of its own sends with `ref: '<its id>'` and no
+`thread`: the message goes to the thread that has that ref, or opens one that keeps it. `thread(session,
+{ ref })` and `replies(session, { ref })` find it again, and `view` returns `ref` on each thread.
+
+**Footers.** A message may carry a `footer`, a closing paragraph such as how to answer. A batch prints each
+distinct footer once, after its messages, so three messages with the same footer read it once.
 
 `require('ai-threads/markup')` has the parser and formatter alone; `require('ai-threads/claude-code')` has
 the hooks, the transcript reader and the installer.
@@ -181,6 +191,12 @@ the hooks, the transcript reader and the installer.
 | `maxText` | `20000` | Longest message, in characters. |
 | `transform` | none | A module (path from the home) exporting `async (text, { session_id, thread, from }) => text`, run before a message is queued: translation, say. The original is kept in `original`. Never runs inside a hook. |
 | `onEnd` | `"keep"` | When a session ends, `keep` its undelivered messages for when it comes back, or `return` them. |
+| `piggybackHeader` | `"Messages for this session that were waiting (ai-threads):"` | The line above messages that ride along with a typed prompt; `""` for none. |
+| `onDelivered` | none | `{ "command": [...] }`: run after every claimed batch, by whichever hook claimed it, with `{ event: "delivered", session_id, via, messages }` on stdin. An app's delivered tick without following `events.jsonl`. |
+| `tick` | none | `{ "command": [...], "everyMs": 60000 }`: run while a session sits idle (by its vigia, at most once per `everyMs`) and on every touch of its signal (by the wake), with `{ event: "tick", session_id, via }` on stdin. A co-installed tool's periodic check, with no idle process or watch of its own. |
+
+A `command` is an argv list (no shell) or one string (run through the shell). It runs detached with
+`AI_THREADS_HOME` set; its output is ignored and nothing waits for it.
 
 ## Limits
 
