@@ -1,0 +1,25 @@
+{
+  "name": "ai-threads",
+  "version": "0.1.0",
+  "description": "Threads between a person and one AI coding session, and the delivery of their messages into it: a per-session inbox with a documented file protocol, a plain-text Q markup that splits replies by thread, and Claude Code hooks that deliver whether the session is idle, busy or just starting. Zero dependencies.",
+  "keywords": ["claude-code", "hooks", "ai", "coding-agent", "threads", "inbox", "messages", "chat", "session", "no-dependencies"],
+  "homepage": "https://github.com/rbritta/ai-threads",
+  "repository": { "type": "git", "url": "git+https://github.com/rbritta/ai-threads.git" },
+  "bugs": "https://github.com/rbritta/ai-threads/issues",
+  "license": "MIT",
+  "author": "rbritta",
+  "type": "commonjs",
+  "main": "./src/index.js",
+  "bin": { "ai-threads": "bin/ai-threads.js" },
+  "exports": {
+    ".": "./src/index.js",
+    "./markup": "./src/markup.js",
+    "./claude-code": "./src/claude-code/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": ["bin", "src", "docs/*.md", "AGENTS.md"],
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  }
+}
