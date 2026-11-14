@@ -47,15 +47,18 @@ test('[Qn] lines move the text below them to that thread, until the next mark', 
   assert.equal(r.current, 'q3');
 });
 
-test('[Q new · title] and [Q nova · title] open a thread, from the thread they were written in', () => {
-  for (const word of ['new', 'nova']) {
-    const r = m.parseReply(`Answer to two.\n[Q ${word} · Should we cache?]\nIs a cache worth it here?\n[Q2]\nBack to two.`, 'q2');
-    assert.deepEqual(r.parts, [
-      { key: 'q2', text: 'Answer to two.' },
-      { opens: 'Should we cache?', parent: 'q2', text: 'Is a cache worth it here?' },
-      { key: 'q2', text: 'Back to two.' },
-    ]);
-  }
+test('[Q new · title], and a word the app adds, open a thread, from the thread they were written in', () => {
+  const reply = (word) => `Answer to two.\n[Q ${word} · Should we cache?]\nIs a cache worth it here?\n[Q2]\nBack to two.`;
+  const opened = [
+    { key: 'q2', text: 'Answer to two.' },
+    { opens: 'Should we cache?', parent: 'q2', text: 'Is a cache worth it here?' },
+    { key: 'q2', text: 'Back to two.' },
+  ];
+  assert.deepEqual(m.parseReply(reply('new'), 'q2').parts, opened);
+  assert.deepEqual(m.parseReply(reply('another'), 'q2', { newWords: ['another'] }).parts, opened);
+  assert.deepEqual(m.parseReply(reply('new'), 'q2', { newWords: ['another'] }).parts, opened, 'new still opens');
+  assert.equal(m.parseReply(reply('another'), 'q2').parts.some((p) => p.opens), false, 'a word not given is text');
+  assert.deepEqual(m.newWords(['another', 'two words', '[x]', 7, 'new']), ['new', 'another']);
 });
 
 test('[Qn → title] and [Qn -> title] rename, and leave the text', () => {
@@ -69,13 +72,11 @@ test('a mark inside a sentence is text, not a mark', () => {
   assert.deepEqual(r.parts, [{ key: 'q2', text: 'As said in [Q1], it works.' }]);
 });
 
-test('the instruction, in English or Portuguese, names the app and the marks', () => {
+test('the instruction names the app and the marks; a custom one replaces it', () => {
   const en = m.instruction({ app: 'the Dev app' });
   assert.match(en, /^This session is followed in the Dev app/);
   assert.match(en, /\[Q new · short title\]/);
   assert.match(en, /\[Qn → short title\]/);
-  const pt = m.instruction({ lang: 'pt' });
-  assert.match(pt, /um app/);
-  assert.match(pt, /\[Q nova · título curto\]/);
+  assert.match(m.instruction(), /^This session is followed in an app,/);
   assert.equal(m.instruction({ custom: 'Use threads, {app}.', app: 'X' }), 'Use threads, X.');
 });

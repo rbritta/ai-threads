@@ -32,7 +32,8 @@ function build(api, sid, opts = {}) {
   const origins = { ...ORIGINS, ...(opts.origins || {}) };
   const dir = api.layout(sid).dir;
   const file = opts.transcript === null ? null : (opts.transcript || api.transcriptOf(sid));
-  const st = file ? transcript.read(file) : transcript.newState();
+  const words = { newWords: api.config.newWords };
+  const st = file ? transcript.read(file, words) : transcript.newState(words);
   const live = api.listening(sid);
   const sess = api.session(sid);
 

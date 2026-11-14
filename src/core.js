@@ -263,7 +263,7 @@ function open(options = {}) {
     const s = session(sid);
     if (config.instructions === false || s.instruction === false) return null;
     const custom = typeof s.instruction === 'string' ? s.instruction : typeof config.instructions === 'string' ? config.instructions : null;
-    return markup.instruction({ lang: s.lang || config.lang, app: s.app || config.app, custom });
+    return markup.instruction({ app: s.app || config.app, custom });
   }
   const instructed = (sid) => fs.existsSync(L(sid).instructed) || session(sid).instructed === true;
 

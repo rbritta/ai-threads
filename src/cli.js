@@ -26,7 +26,7 @@ const HELP = `ai-threads: threads between a person and one AI coding session.
   ai-threads handback <session> [--to S]        move what the session never read
   ai-threads answers <session> [--release K] [--since ISO] [--json]
   ai-threads replies <session> <n | --ref R> [--since ISO] [--json]   what the session answered in a thread
-  ai-threads register <session> [--title T] [--app A] [--lang en|pt] [--cwd D] [--instructed]
+  ai-threads register <session> [--title T] [--app A] [--cwd D] [--instructed]
   ai-threads status [<session>] [--json]        hooks installed, sessions, who listens now
   ai-threads events [--session S] [--since ISO] [--json]
   ai-threads install [--settings F] [--claude-dir D] [--rewake-message T] [--rewake-summary T]
@@ -161,7 +161,7 @@ async function main(argv = process.argv.slice(2), io = {}) {
       }
       case 'register': {
         const fields = {};
-        for (const k of ['title', 'app', 'lang', 'cwd']) if (f[k]) fields[k] = f[k];
+        for (const k of ['title', 'app', 'cwd']) if (f[k]) fields[k] = f[k];
         if (f.instructed) fields.instructed = true;
         json(at.register(args[0], fields));
         return 0;

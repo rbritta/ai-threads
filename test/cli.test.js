@@ -66,7 +66,7 @@ test('retract, handback, register, events, status', async (t) => {
   assert.equal((await run(['retract', SID, id])).code, 1);
   await run(['send', SID, 'for the next one']);
   assert.equal((await run(['handback', SID, '--to', SID2])).out, `1 handed back to ${SID2}\n`);
-  assert.equal((await run(['register', SID2, '--app', 'the Dev app', '--lang', 'pt', '--instructed'])).json().lang, 'pt');
+  assert.equal((await run(['register', SID2, '--app', 'the Dev app', '--instructed'])).json().app, 'the Dev app');
   const ev = (await run(['events', '--session', SID, '--json'])).json().map((e) => e.event);
   assert.deepEqual(ev, ['queued', 'retracted', 'queued', 'handed_back']);
   const st = (await run(['status', '--json'])).json();

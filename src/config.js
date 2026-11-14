@@ -10,12 +10,12 @@ const path = require('path');
 const { readJson } = require('./util');
 
 const DEFAULTS = Object.freeze({
-  /** Language of the instruction the session gets once: 'en' or 'pt'. */
-  lang: 'en',
   /** Who follows the session, in the instruction ("This session is followed in {app}"). */
   app: null,
-  /** false: never tell the session about the Q markup; a string: a text of your own instead. */
+  /** false: never tell the session about the Q markup; a string: a text of your own instead (another language, say). */
   instructions: true,
+  /** Words besides `new` that open a thread (`[Q <word> · title]`), for an instruction of your own in another language. */
+  newWords: [],
   /** Deliver only in sessions started by these entrypoints (CLAUDE_CODE_ENTRYPOINT), e.g. ['claude-vscode']. */
   entrypoints: null,
   /** Seconds between the re-touches after a session starts with messages waiting (its watcher comes up late). */

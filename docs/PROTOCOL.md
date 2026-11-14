@@ -227,7 +227,7 @@ Open, answered and closed, in a router's words, are `status: open`, the state `w
 |---|---|---|
 | `[Q3 · title]` | heads a delivered message | what follows is thread 3 |
 | `[Q3]` or `[Q3 · title]` alone on a line | in the session's reply | the text below goes to thread 3, until the next mark |
-| `[Q new · title]` or `[Q nova · title]` alone on a line | in the session's reply | the session opens a thread; the text below is its first message; its parent is the thread it was written in |
+| `[Q new · title]` alone on a line (or a word from the config's `newWords` in place of `new`) | in the session's reply | the session opens a thread; the text below is its first message; its parent is the thread it was written in |
 | `[Q3 → title]` or `[Q3 -> title]` alone on a line | in the session's reply | the session renames thread 3; the line is taken out of the text |
 
 How a reply is attributed:
@@ -294,9 +294,9 @@ opened through the API or `ai-threads open`, and an app's notes.
 
 ## session.json
 
-Optional, written by an app: `{ "session_id", "title", "app", "lang", "instruction", "instructed",
-"cwd", "transcript", "created_at", "updated_at" }`. `lang` (`en`, `pt`), `app` and `instruction` (a text
-of its own, or `false`) shape the instruction; `instructed: true` says the app already told the session.
+Optional, written by an app: `{ "session_id", "title", "app", "instruction", "instructed",
+"cwd", "transcript", "created_at", "updated_at" }`. `app` and `instruction` (a text of its own, or
+`false`) shape the instruction (0.2 files may carry a `lang`, which 0.3 ignores); `instructed: true` says the app already told the session.
 
 ## From Python
 

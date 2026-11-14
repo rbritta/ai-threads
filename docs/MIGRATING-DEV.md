@@ -23,7 +23,8 @@ files touched, commits).
 
 1. **Install the hooks next to the app's own.** `ai-threads install` (or `--settings` for a project file).
    Set `entrypoints` in `<home>/config.json` if the app only serves one kind of session
-   (`["claude-vscode"]`), and `lang` / `app` for the instruction.
+   (`["claude-vscode"]`), `app` for the instruction, and `instructions` / `newWords` when the app tells
+   its sessions in its own words.
 2. **Import the threads once**, per session, from the app's record:
 
    ```js
@@ -35,7 +36,7 @@ files touched, commits).
      parent: q.parent ? `q${q.parent}` : null,
      status: q.resolvedAt ? 'resolved' : 'open', resolved_at: q.resolvedAt || null,
    })));
-   at.register(sid, { instructed: true, lang: 'pt', app: 'the app' }); // it was told already
+   at.register(sid, { instructed: true, app: 'the app' }); // it was told already
    ```
 
    Threads the session opened are keyed by the transcript entry that opened them and their count in

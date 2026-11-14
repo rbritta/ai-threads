@@ -95,7 +95,7 @@ has the layout, the steps and an example in Python.
 ## The Q markup
 
 The session learns it from one short instruction, sent once with the first message that has a thread
-(English by default; Portuguese built in; or your own text):
+(the built-in one, or your own text, in any language, with `instructions`):
 
 | The session writes, alone on a line | Meaning |
 |---|---|
@@ -103,8 +103,8 @@ The session learns it from one short instruction, sent once with the first messa
 | `[Q new · Should we cache?]` | opens a thread (derived from the one it was in), the text below is its first message |
 | `[Q3 → Login timeout on mobile]` | gives thread 3 a better title |
 
-A reply with no mark goes to the thread of the last message delivered. `[Q nova · …]` works as
-`[Q new · …]`. Text the person types straight into the session becomes the "typed in the IDE" thread.
+A reply with no mark goes to the thread of the last message delivered. An instruction of your own in
+another language can teach its own word for `new`: list it in `newWords`. Text the person types straight into the session becomes the "typed in the IDE" thread.
 After a resume, a `/clear` or a compaction, the session is reminded of the markup.
 
 ## With chat-thread
@@ -163,7 +163,7 @@ message can be taken back with `retract()` (chat-thread's × on a queued bubble)
 |---|---|
 | `listening(session)` | Whether it gets a message by itself now, and why. |
 | `pending`, `delivered`, `events`, `followEvents(cb)` | What waits, what was delivered, and the event log. |
-| `register(session, { title, app, lang, instruction, instructed })` | What the instruction says, and whether the session was already told. |
+| `register(session, { title, app, instruction, instructed })` | What the instruction says, and whether the session was already told. |
 | `claim`, `formatDelivery`, `arm`, `disarm`, `tick` | What the hooks use, for a host other than Claude Code. |
 
 **Your own thread ids.** An app that keeps conversations of its own sends with `ref: '<its id>'` and no
@@ -182,9 +182,9 @@ the hooks, the transcript reader and the installer.
 
 | Key | Default | |
 |---|---|---|
-| `lang` | `"en"` | Language of the instruction: `en` or `pt`. |
 | `app` | `"an app"` | Who follows the session, in the instruction. |
-| `instructions` | `true` | `false` never sends it; a string replaces it (`{app}` is filled in). |
+| `instructions` | `true` | `false` never sends it; a string replaces it (`{app}` is filled in), in any language. |
+| `newWords` | `[]` | Words besides `new` that open a thread (`[Q <word> · title]`), for an instruction of your own in another language. |
 | `entrypoints` | all | Deliver only in sessions from these `CLAUDE_CODE_ENTRYPOINT`s, e.g. `["claude-vscode"]`. |
 | `touches` | `[4, 12, 30]` | Seconds between re-touches after a session starts with messages waiting. |
 | `vigia` | `{ "stepMs": 2000, "maxMs": 84600000, "aliveCheckMs": 60000 }` | The Stop fallback. |

@@ -207,7 +207,7 @@ test('answers to a thread with a release key are recorded for a policy hook', (t
   assert.equal(at.answers(SID).length, 1);
 });
 
-test('the instruction goes with the first batch that has a thread, once, in the session\'s language', (t) => {
+test('the instruction goes with the first batch that has a thread, once, in the session\'s own words when it has them', (t) => {
   const { at } = api(t, { config: { app: 'the Dev app' } });
   at.notice(SID, 'just a notice');
   assert.equal(at.formatDelivery(SID, at.claim(SID)), 'just a notice');
@@ -218,9 +218,9 @@ test('the instruction goes with the first batch that has a thread, once, in the 
   assert.equal(at.formatDelivery(SID, at.claim(SID)), '[Q1 · first] second');
   assert.match(at.reminder(SID), /^This session is followed/);
 
-  at.register(SID2, { lang: 'pt', app: 'o app Dev' });
-  at.deliverSync(SID2, 'oi');
-  assert.match(at.formatDelivery(SID2, at.claim(SID2)), /^Esta sessão é acompanhada por o app Dev/);
+  at.register(SID2, { instruction: 'Answer in threads, as {app} shows them.', app: 'the other app' });
+  at.deliverSync(SID2, 'hi');
+  assert.match(at.formatDelivery(SID2, at.claim(SID2)), /^Answer in threads, as the other app shows them\.\n\n\[Q1 · hi\] hi$/);
 
   const told = api(t).at;
   told.register(SID, { instructed: true });
@@ -234,9 +234,9 @@ test('the instruction goes with the first batch that has a thread, once, in the 
 
 test('the transform runs before queueing and the original is kept', async (t) => {
   const { at } = api(t);
-  const r = await at.deliver(SID, 'olá', { transform: async (text) => `hello (${text})` });
+  const r = await at.deliver(SID, 'hi', { transform: async (text) => `hello (${text})` });
   const m = at.pending(SID).find((x) => x.id === r.id);
-  assert.deepEqual([m.text, m.original], ['hello (olá)', 'olá']);
+  assert.deepEqual([m.text, m.original], ['hello (hi)', 'hi']);
   const plain = await at.deliver(SID, 'no transform', { thread: 1 });
   assert.equal(at.pending(SID).find((x) => x.id === plain.id).original, undefined);
 });

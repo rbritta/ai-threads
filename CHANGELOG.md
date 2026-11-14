@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0
+
+English only. The file protocol stays version 1.
+
+- The second built-in language of the instruction is gone, with the `lang` option (config, `register`,
+  `--lang`): an app that tells its sessions in another language passes its own text in `instructions`
+  (or per session in `instruction`). A `lang` left in a config or a session file is ignored.
+- `newWords` (config): words besides `new` that open a thread, `[Q <word> · title]`, for such a text. Only
+  `new` opens one by default; the other word 0.2 took is now listed there by the app that wants it.
+- `markup.parseReply(text, current, { newWords })` and `markup.newWords(extra)`; `markup.INSTRUCTION`
+  (one text) replaces `markup.INSTRUCTIONS`.
+
 ## 0.2.0
 
 For an app that routes messages to many sessions and keeps conversations of its own. Everything is optional
@@ -41,8 +53,8 @@ First release.
   `events.jsonl` of what was queued, delivered, retracted and handed back.
 - Threads opened by either side, with a type, a red flag and a release key; resolved from either side,
   reopened when the person writes again; derived threads keep their parent.
-- The Q markup (`[Qn · title]`, `[Qn]`, `[Q new · title]` / `[Q nova · title]`, `[Qn → title]`) with
-  the instruction in English and Portuguese, sent once and recalled after a resume, clear or compaction.
+- The Q markup (`[Qn · title]`, `[Qn]`, `[Q new · title]`, `[Qn → title]`) with the instruction in two
+  built-in languages (one left in 0.3.0), sent once and recalled after a resume, clear or compaction.
 - Claude Code hooks: start (watch + re-touch), wake (FileChanged `asyncRewake`), vigia (Stop
   `asyncRewake`, only in sessions ai-threads is used in), prompt (piggyback), end. Never in a subagent;
   an optional entrypoint filter. The watched file is only ever overwritten.

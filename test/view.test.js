@@ -53,7 +53,7 @@ test('states: queued, sent, working (with the activity), stopped, resolved', (t)
   assert.deepEqual([at.view(SID).threads[0].state, at.view(SID).threads[0].label], ['stopped', 'Session closed']);
   at.resolve(SID, 1);
   assert.deepEqual([at.view(SID).threads[0].status, at.view(SID).threads[0].state], ['resolved', 'resolved']);
-  assert.equal(at.view(SID, { labels: { stopped: 'Aba fechada' } }).session.state, 'stopped');
+  assert.equal(at.view(SID, { labels: { stopped: 'Tab closed' } }).session.state, 'stopped');
 });
 
 test('threads the session opened and the IDE thread get numbers; persist keeps them', (t) => {
@@ -75,6 +75,17 @@ test('threads the session opened and the IDE thread get numbers; persist keeps t
   assert.deepEqual(at.view(SID).threads.map((x) => x.n), [1, 2, 3]);
   at.view(SID, { persist: true });
   assert.deepEqual(at.threads(SID).map((x) => [x.n, x.key ? x.key.split(':')[0] : null]), [[1, null], [2, 'ide'], [3, 'new']]);
+});
+
+test('a word from the config\'s newWords opens a thread the way new does', (t) => {
+  const { at } = setup(t, [
+    T.user('u0', 'typed straight in the IDE'),
+    T.assistant('a0', [T.text('In the IDE thread.\n[Q another · Side question]\nBump the version too?')]),
+  ], { config: { newWords: ['another'] } });
+  assert.deepEqual(at.view(SID).threads.map((x) => [x.n, x.title, x.origin]), [
+    [1, '', 'typed in the IDE'],
+    [2, 'Side question', 'opened by the session'],
+  ]);
 });
 
 test('a title the session gives wins over the old one, unless the person renamed it later', (t) => {

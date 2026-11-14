@@ -18,9 +18,10 @@ const markup = require('../markup');
 const IDE_TAGS = /<((?:ide_|system-reminder|command-|local-command-|task-notification)[a-z_-]*)[^>]*>[\s\S]*?<\/\1>/gi;
 const MAX_ACTIVITY = 200;
 
-/** A new reading state. `messages` grows as the transcript does. */
-function newState() {
+/** A new reading state. `messages` grows as the transcript does; `newWords` as in markup.parseReply. */
+function newState({ newWords = null } = {}) {
   return {
+    newWords,
     offset: 0,
     current: null, // the thread of the last message delivered or typed
     reply: null, // the thread the session's text is in now (marks move it until the next turn)
@@ -90,7 +91,7 @@ function onAssistant(st, j) {
       continue;
     }
     if (b.type !== 'text' || !String(b.text || '').trim()) continue;
-    const r = markup.parseReply(b.text, st.reply || st.current || 'q1');
+    const r = markup.parseReply(b.text, st.reply || st.current || 'q1', { newWords: st.newWords });
     for (const rn of r.renames) st.renames.set(rn.n, { title: rn.title, at: j.timestamp });
     for (const part of r.parts) {
       const id = `${j.uuid}:${k++}`;
@@ -120,13 +121,14 @@ const CACHE = new Map();
 /**
  * Reads what `file` grew since the last call and returns the state. `opts.state` keeps your own state
  * instead of the module's cache; `opts.onEntry(entry)` sees every parsed line too, for an app that
- * wants more from the same pass (cost, files touched).
+ * wants more from the same pass (cost, files touched); `opts.newWords` as in markup.parseReply, taken
+ * when the state is made.
  */
 function read(file, opts = {}) {
   let st = opts.state || CACHE.get(file);
   let size;
-  try { size = fs.statSync(file).size; } catch (_) { return st || newState(); }
-  if (!st || size < st.offset) { st = newState(); if (!opts.state) CACHE.set(file, st); }
+  try { size = fs.statSync(file).size; } catch (_) { return st || newState(opts); }
+  if (!st || size < st.offset) { st = newState(opts); if (!opts.state) CACHE.set(file, st); }
   if (size > st.offset) {
     const fd = fs.openSync(file, 'r');
     let buf;
