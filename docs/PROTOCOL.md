@@ -55,7 +55,7 @@ Names that start with a dot are temp files: every listing skips them.
 
 | Field | Meaning |
 |---|---|
-| `id` | Unique, and sorts in the order messages were written: the time in milliseconds in base 36, padded to 9 characters, a dash, 8 hex characters. The file is `<id>.json`. |
+| `id` | Unique, and sorts in the order messages were written: the time in milliseconds in base 36, padded to 9 characters, a dash, 8 hex characters. A writer never repeats the time part (a second id in the same millisecond takes the next one); between two writers in the same millisecond the order is not defined. The file is `<id>.json`. |
 | `thread` | `q<n>`, or `null` for a message with no thread. |
 | `kind` | `turn` (the person, or an app on their behalf, talks to the session) or `notice` (no reply expected, never in a thread). |
 | `from` | `person`, `app`, or a name. |

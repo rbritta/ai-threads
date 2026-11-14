@@ -38,6 +38,13 @@ test('threads: a new one per message without a thread, the same one by number, r
   assert.throws(() => at.deliverSync(SID, '   '), /empty/);
 });
 
+test('ids written in the same millisecond still sort in the order they were written', () => {
+  const { newId } = require('../src/util');
+  const ids = Array.from({ length: 50 }, () => newId(1000));
+  assert.deepEqual([...ids].sort(), ids);
+  assert.equal(new Set(ids.map((id) => id.split('-')[0])).size, 50);
+});
+
 test('a derived thread keeps where it came from; notices and thread:false have no thread', (t) => {
   const { at } = api(t);
   at.deliverSync(SID, 'Main subject');

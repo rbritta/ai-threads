@@ -87,9 +87,14 @@ function withLock(file, fn, { waitMs = 3000, staleMs = 10000 } = {}) {
   }
 }
 
-/** Sortable message id: the time in base 36, then randomness. Names sort in the order they were written. */
+/** Sortable message id: the time in base 36, then randomness. Names sort in the order they were written: within one
+ * process the time never repeats (two ids in the same millisecond take the next one), so the random part never has to
+ * break a tie. */
+let lastIdTime = 0;
 function newId(now = Date.now()) {
-  return `${now.toString(36).padStart(9, '0')}-${crypto.randomBytes(4).toString('hex')}`;
+  const t = Math.max(now, lastIdTime + 1);
+  lastIdTime = t;
+  return `${t.toString(36).padStart(9, '0')}-${crypto.randomBytes(4).toString('hex')}`;
 }
 
 const iso = (t = Date.now()) => new Date(t).toISOString();

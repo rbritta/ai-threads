@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+- Message ids keep the order they were written in when two land in the same millisecond (one writer never
+  repeats the time part); before, the random part could put them out of order on a fast machine.
+- Test transcripts take their times from the run, so the suite passes at any hour.
+
 ## 0.1.0
 
 First release.
