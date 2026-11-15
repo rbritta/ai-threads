@@ -1,6 +1,6 @@
 {
   "name": "ai-threads",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Threads between a person and one AI coding session, and the delivery of their messages into it: a per-session inbox with a documented file protocol, a plain-text Q markup that splits replies by thread, and Claude Code hooks that deliver whether the session is idle, busy or just starting. Zero dependencies.",
   "keywords": ["claude-code", "hooks", "ai", "coding-agent", "threads", "inbox", "messages", "chat", "session", "no-dependencies"],
   "homepage": "https://github.com/rbritta/ai-threads",
@@ -20,6 +20,13 @@
   "files": ["bin", "src", "docs/*.md", "AGENTS.md"],
   "engines": { "node": ">=22" },
   "scripts": {
-    "test": "node --test \"test/*.test.js\""
+    "test": "node --test \"test/*.test.js\"",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include=\"src/**\" --test-coverage-include=scripts/release-notes.mjs \"test/*.test.js\"",
+    "demo": "node scripts/serve-demo.mjs",
+    "build:demo": "node scripts/build-demo.mjs",
+    "screenshots": "node scripts/screenshots.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.48.0"
   }
 }

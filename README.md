@@ -1,24 +1,65 @@
 # ai-threads
 
-Threads between a person and one AI coding session, and the delivery of their messages into it.
+Threads between a person and one AI coding session, and the delivery of their messages into it: you write to a Claude Code session from somewhere else (a web page, a phone, a bot) and the message reaches it whether it is idle, mid-turn or just starting, with nobody pressing Enter. You keep several subjects open with the same session, each its own thread, and the session's replies come back split by thread. Plain files, a documented protocol, zero dependencies.
 
-You write to a Claude Code session from somewhere else (a web page, a phone, a bot) and the message
-reaches it whether it is idle, mid-turn or just starting, with nobody pressing Enter. You keep several
-subjects open with the same session, each its own thread, and the session's replies come back split by
-thread. Plain files, a documented protocol, zero dependencies.
+[![CI](https://github.com/rbritta/ai-threads/actions/workflows/ci.yml/badge.svg)](https://github.com/rbritta/ai-threads/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/rbritta/ai-threads)](https://github.com/rbritta/ai-threads/releases) [![License: MIT](https://img.shields.io/github/license/rbritta/ai-threads)](LICENSE) [![Live demo](https://img.shields.io/badge/demo-live-2ea043)](https://rbritta.github.io/ai-threads/demo/)
 
-[How it works](#how-it-works) · [Use it](#use-it) · [The Q markup](#the-q-markup) · [With chat-thread](#with-chat-thread) · [API](#api) · [Configuration](#configuration) · [Protocol](docs/PROTOCOL.md) · [For AI agents](AGENTS.md) · [Roadmap](TODO.md)
+![The live demo: a person and a session in numbered threads, and what the session read and wrote](docs/demo.png)
 
-## Part of a small family
+**[Live demo](https://rbritta.github.io/ai-threads/demo/)** · [Install](#install) · [Quick start](#quick-start) · [How it works](#how-it-works) · [The Q markup](#the-q-markup) · [With chat-thread](#with-chat-thread) · [API](#api) · [Configuration](#configuration) · [Protocol](docs/PROTOCOL.md) · [For AI agents](AGENTS.md) · [Roadmap](TODO.md)
 
-Each works alone; together they need no glue code.
+## What it does
 
-| Project | What it does |
-|---|---|
-| [chat-thread](https://github.com/rbritta/chat-thread) | The conversation on screen: threads, bubbles, ticks, the message box. `view()` here returns its threads as they are. |
-| **ai-threads** | A person and one session: the threads, and getting each message into the session. |
-| ai-signalbox (coming) | Many sessions on one machine: who is who, routing a message to the right session, shared resources, workflow. It delivers through ai-threads' files. |
-| [claude-session-relay](https://github.com/rbritta/claude-session-relay) | VS Code: open, find and close Claude Code tabs and windows from outside. |
+- **Delivery in any state.** A message reaches the session whether it is idle, mid-turn or just starting, with nobody pressing Enter: Claude Code hooks watch a signal file, a Stop hook stands guard while the session is idle, and anything still waiting rides along with the next prompt.
+- **Numbered threads.** Several subjects with the same session, each its own thread (Q1, Q2...). The session learns a plain-text markup from one short instruction, and its replies come back split by thread; it can open a thread of its own or retitle one.
+- **Exactly once.** Each message is claimed by one atomic rename, so the watch, the Stop hook and the prompt hook never deliver the same one twice. `events.jsonl` says what was queued and delivered, and how.
+- **Ready for a chat screen.** `view()` returns the threads in the shape [chat-thread](https://github.com/rbritta/chat-thread)'s `createThreads` takes: titles, states, what the session is doing, queued, delivered and read messages.
+- **A documented file protocol.** Plain files under one folder, so a program in any language sends and reads the same way ([docs/PROTOCOL.md](docs/PROTOCOL.md), with an example in Python; the tests run a second implementation in Python against the library).
+- **Small and offline.** Zero runtime dependencies, CommonJS, Node 22+, with a CLI. Nothing calls a model, reads your code or sends anything over the network.
+
+The [live demo](https://rbritta.github.io/ai-threads/demo/) runs the library itself in the browser, on a file system in memory, with a pretend session that answers in the markup.
+
+## Install
+
+Node 22 or later, and Claude Code for the delivery. No runtime dependencies; pin a commit (`github:rbritta/ai-threads#<commit>`) or a release tag for repeatable installs.
+
+```sh
+npm install github:rbritta/ai-threads
+npx ai-threads install          # adds the hooks to ~/.claude/settings.json (backed up once)
+```
+
+`install --settings <file>` targets a project's `.claude/settings.local.json` instead. The hooks run from
+a copy at `<home>/runtime`, so they keep working if the package moves; `ai-threads remove` takes them out.
+`--rewake-message <text>` and `--rewake-summary <text>` set the line the session reads above a batch that
+woke it and the short label Claude Code shows; installing again without them keeps what is installed.
+
+## Quick start
+
+From your app:
+
+```js
+const threads = require('ai-threads');
+const at = threads.open(); // home: AI_THREADS_HOME or ~/.ai-threads
+
+const q = at.deliverSync(sessionId, 'Is the deploy fixed?');         // opens Q1
+at.deliverSync(sessionId, 'And on staging?', { thread: q.n });       // more in Q1
+at.notice(sessionId, 'CI is slow today.');                           // no thread, no reply expected
+
+at.listening(sessionId);   // { listening: true, why: 'watch', alive: true, busy: false, ... }
+at.view(sessionId);        // { session, threads } for chat-thread
+```
+
+Or from a shell, from any language:
+
+```sh
+ai-threads send <session> "Is the deploy fixed?"
+ai-threads send <session> --file reply.txt --thread 1
+ai-threads list --json
+ai-threads status
+```
+
+Programs that would rather not run Node read and write the same files: [docs/PROTOCOL.md](docs/PROTOCOL.md)
+has the layout, the steps and an example in Python.
 
 ## How it works
 
@@ -51,46 +92,6 @@ Two rules keep it working next to other tools in the same session: the signal fi
 overwritten, never removed or renamed (Claude Code keeps one file watcher per session, shared by every
 tool, and a removed watched file can take it down for all of them), and no hook but SessionStart returns
 `watchPaths`.
-
-## Use it
-
-Node 22 or later.
-
-```sh
-npm install github:rbritta/ai-threads
-npx ai-threads install          # adds the hooks to ~/.claude/settings.json (backed up once)
-```
-
-`install --settings <file>` targets a project's `.claude/settings.local.json` instead. The hooks run from
-a copy at `<home>/runtime`, so they keep working if the package moves; `ai-threads remove` takes them out.
-`--rewake-message <text>` and `--rewake-summary <text>` set the line the session reads above a batch that
-woke it and the short label Claude Code shows; installing again without them keeps what is installed.
-
-Then, from your app:
-
-```js
-const threads = require('ai-threads');
-const at = threads.open(); // home: AI_THREADS_HOME or ~/.ai-threads
-
-const q = at.deliverSync(sessionId, 'Is the deploy fixed?');         // opens Q1
-at.deliverSync(sessionId, 'And on staging?', { thread: q.n });       // more in Q1
-at.notice(sessionId, 'CI is slow today.');                           // no thread, no reply expected
-
-at.listening(sessionId);   // { listening: true, why: 'watch', alive: true, busy: false, ... }
-at.view(sessionId);        // { session, threads } for chat-thread
-```
-
-Or from a shell, from any language:
-
-```sh
-ai-threads send <session> "Is the deploy fixed?"
-ai-threads send <session> --file reply.txt --thread 1
-ai-threads list --json
-ai-threads status
-```
-
-Programs that would rather not run Node read and write the same files: [docs/PROTOCOL.md](docs/PROTOCOL.md)
-has the layout, the steps and an example in Python.
 
 ## The Q markup
 
@@ -207,6 +208,38 @@ A `command` is an argv list (no shell) or one string (run through the shell). It
 - One machine: the files are local. A remote app reaches them through its own server.
 - Nothing here calls a model, reads your code or sends anything over the network.
 
+## Part of a small family
+
+Each works alone; together they need no glue code.
+
+| Project | What it does |
+| --- | --- |
+| [ai-signalbox](https://github.com/rbritta/ai-signalbox) | A coordination layer for several AI coding sessions on one machine: who is doing what, shared resources, asks and threads with the person. |
+| **ai-threads** | Numbered threads between a person and one AI coding session, and the delivery of each message into it. |
+| [chat-thread](https://github.com/rbritta/chat-thread) | The conversation on screen: bubbles, ticks, threads and the message box. ai-threads' `view()` returns threads in the shape its `createThreads` takes. |
+| [postit-board](https://github.com/rbritta/postit-board) | A glass board of sticky notes for an app's home screen, with notes the app pins and takes down by itself. |
+| [claude-session-relay](https://github.com/rbritta/claude-session-relay) | Drive the Claude Code tabs of any VS Code window from a script, a bot or a web panel, through a plain file inbox. |
+
+## Develop
+
+```sh
+git clone https://github.com/rbritta/ai-threads.git && cd ai-threads
+npm ci                 # only playwright-core, for the demo's browser test and its screenshot
+npm test               # everything, offline: core, hooks, CLI, installer, protocol, the demo
+npm run test:coverage  # the same, with a coverage summary of src/
+npm run demo           # http://localhost:5177/demo/
+npm run build:demo     # demo/ai-threads.js, the browser build pages.yml publishes
+npm run screenshots    # docs/demo.png
+```
+
+99 tests, in about eight seconds: 94 in Node (among them the demo's browser build, run in a bare `vm` context) and 5 in a real browser on the demo page. Tests run in temp folders with a fake Claude Code registry: they never touch `~/.claude` and never call a model. The protocol tests also run a Python implementation when Python 3.8+ is on the PATH, and say so when they skip. The browser test pins the language, the time zone and the clock, and skips with the reason when no browser is installed (CI makes that an error).
+
+The demo is `demo/`: `demo.js` plays Claude Code and the AI around the real library, `vendor/` is chat-thread's `dist/` copied as it is, and `ai-threads.js` is built from `src/` by `scripts/build-demo.mjs` (served fresh by `npm run demo`, never committed).
+
+## Contributing
+
+Issues and pull requests are welcome; keep it dependency-free. [CONTRIBUTING.md](CONTRIBUTING.md) has the setup, what a pull request needs and how releases are made, and [SECURITY.md](SECURITY.md) how to report a vulnerability privately. Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## License
 
-MIT
+[MIT](LICENSE)

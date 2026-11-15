@@ -1,0 +1,132 @@
+/* The demo page around the threads. Colors follow the system (or <html data-theme>), like the threads'
+   theme: 'auto'. Every size works down to a 360 px phone with no horizontal scroll. */
+:root {
+  color-scheme: dark;
+  --bg: #0d1117;
+  --panel: #161b22;
+  --border: #30363d;
+  --text: #e6edf3;
+  --muted: #9da7b3;
+  --link: #6cb6ff;
+  --code-bg: #0b0f14;
+  --button: #238636;
+  --button-text: #ffffff;
+  --focus: #6cb6ff;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --border: #d0d7de;
+    --text: #1f2328;
+    --muted: #57606a;
+    --link: #0b5cad;
+    --code-bg: #f0f2f5;
+    --button: #1a7f37;
+    --focus: #0b5cad;
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f5f6f8;
+  --panel: #ffffff;
+  --border: #d0d7de;
+  --text: #1f2328;
+  --muted: #57606a;
+  --link: #0b5cad;
+  --code-bg: #f0f2f5;
+  --button: #1a7f37;
+  --focus: #0b5cad;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+a { color: var(--link); }
+code { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 0.92em; overflow-wrap: anywhere; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.top { max-width: 1240px; margin: 0 auto; padding: 24px 16px 8px; }
+.top h1 { margin: 0 0 8px; font-size: 28px; }
+.top p { margin: 0 0 10px; max-width: 80ch; }
+.top .fine { color: var(--muted); font-size: 14px; }
+.top nav { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 4px; }
+
+.layout {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 8px 16px 40px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+}
+
+@media (min-width: 960px) {
+  .layout { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); align-items: start; }
+  .session { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; }
+}
+
+.person, .session {
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+h2 { margin: 0 0 6px; font-size: 18px; }
+h3 { margin: 18px 0 2px; font-size: 15px; }
+.status { margin: 0 0 12px; color: var(--muted); font-size: 14px; min-height: 1.5em; }
+.hint { margin: 0 0 6px; color: var(--muted); font-size: 13px; }
+
+pre.text {
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: 13px/1.45 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+form { margin-top: 18px; display: grid; gap: 6px; }
+label { font-weight: 600; font-size: 15px; }
+textarea {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--code-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: 13px/1.45 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  resize: vertical;
+}
+button {
+  justify-self: start;
+  padding: 7px 14px;
+  background: var(--button);
+  color: var(--button-text);
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+details { margin-top: 16px; }
+summary { cursor: pointer; font-weight: 600; }
+details pre.text, details .files { margin-top: 8px; }
+.files { margin: 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
+.files code { color: var(--text); }

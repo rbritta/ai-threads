@@ -1,5 +1,9 @@
 # LF everywhere
 * text=auto eol=lf
 
-# Binary assets
+# binary assets
 *.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.tgz binary

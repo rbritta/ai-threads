@@ -2,17 +2,29 @@ name: CI
 on:
   push:
   pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   test:
+    name: test (${{ matrix.os }}, Node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
         node: [22, 24]
+    env:
+      # the browser tests use the runner's Chrome; without one they fail here instead of skipping
+      PW_REQUIRE: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      - run: npm test
+          cache: npm
+      - run: npm ci
+      - name: Tests, with a coverage summary
+        run: npm run test:coverage

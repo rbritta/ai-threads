@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'">
+  <title>ai-threads demo</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="vendor/chat-thread.css">
+  <link rel="stylesheet" href="demo.css">
+  <script src="ai-threads.js"></script>
+  <script type="module" src="demo.js"></script>
+</head>
+<body>
+  <header class="top">
+    <h1>ai-threads</h1>
+    <p>A person and one AI coding session, talking in numbered threads. Write in a thread, open a new one with the box at the bottom, or branch one off with the button next to Send: each message goes into the session's inbox, the session is woken to read it, and its answer comes back split by thread.</p>
+    <p class="fine">Everything runs in this tab. The real ai-threads library keeps its files in memory, its hooks deliver each message, its markup parser splits the answers and <code>view()</code> hands the threads to <a href="https://github.com/rbritta/chat-thread">chat-thread</a>, which draws them. Only the session is pretend: a script with canned answers. Nothing calls a model, and every name and message here is made up.</p>
+    <nav aria-label="Links">
+      <a href="https://github.com/rbritta/ai-threads">GitHub</a>
+      <a href="https://github.com/rbritta/ai-threads#the-q-markup">The Q markup</a>
+      <a href="https://github.com/rbritta/ai-threads/blob/main/docs/PROTOCOL.md">The file protocol</a>
+    </nav>
+  </header>
+
+  <main class="layout">
+    <section class="person" aria-labelledby="person-title">
+      <h2 id="person-title">The person</h2>
+      <p class="status" id="status" role="status" aria-live="polite"></p>
+      <div id="threads"></div>
+    </section>
+
+    <aside class="session" aria-labelledby="session-title">
+      <h2 id="session-title">Inside the session</h2>
+      <h3>What it read last</h3>
+      <p class="hint">The batch the wake hook put in front of the session: each message under its thread's mark.</p>
+      <pre id="read" class="text" tabindex="0"></pre>
+      <h3>What it wrote last</h3>
+      <p class="hint">Its answer as it wrote it. A line <code>[Qn]</code> moves to thread n, <code>[Q new · title]</code> opens a thread, <code>[Qn → title]</code> renames one.</p>
+      <pre id="wrote" class="text" tabindex="0"></pre>
+      <form id="write">
+        <label for="as-session">Write as the session</label>
+        <textarea id="as-session" rows="6" spellcheck="false"></textarea>
+        <button type="submit">Send as the session</button>
+      </form>
+      <details>
+        <summary>The instruction it got once</summary>
+        <pre id="instruction" class="text" tabindex="0"></pre>
+      </details>
+      <details>
+        <summary>Its files, in memory</summary>
+        <ul id="files" class="files"></ul>
+      </details>
+    </aside>
+  </main>
+</body>
+</html>

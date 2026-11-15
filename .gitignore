@@ -1,3 +1,6 @@
 node_modules/
 *.log
+*.tgz
 .DS_Store
+# built by scripts/build-demo.mjs (npm run build:demo; pages.yml)
+demo/ai-threads.js
